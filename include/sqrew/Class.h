@@ -18,8 +18,10 @@ protected:
     using Func = Integer (*)(HSQUIRRELVM);
     using ReleaseHook = Integer (*)(void*, Integer);
 
-    ClassImpl(const Context& context, const String& name, size_t typeTag);
+    ClassImpl(const Context& context);
     virtual ~ClassImpl();
+
+    void initialize(const String& name, size_t typeTag);
 
     void registerConstructor(Func func);
     void registerClosure(ClosureType type, const String& name, Func func);
@@ -47,7 +49,6 @@ private:
 
     std::unique_ptr<Detail> detail_;
     const Context& context_;
-    const String name_;
 
     ClassImpl(const ClassImpl&) = delete;
     ClassImpl& operator=(const ClassImpl&) = delete;
@@ -210,7 +211,9 @@ class Class: protected detail::ClassImpl
 public:
     static Class expose(const Context& context, const String& fullName)
     {
-        return Class(context, fullName);
+		Class definition(context);
+		definition.initialize(fullName, getTypeTag());
+		return std::move(definition);
     }
 
     template<class ...ArgsT>
@@ -266,11 +269,11 @@ public:
     }
 
 private:
-    Class(const Context& context, const String& path)
-        : detail::ClassImpl(context, path, getTypeTag()) {}
+    Class(const Context& context)
+        : detail::ClassImpl(context) {}
 
     Class(Class&& rhs)
-        : detail::ClassImpl(std::forward<detail::ClassImpl>(rhs)) {}
+        : detail::ClassImpl(std::move(rhs)) {}
 };
 
 template<class ClassT, template<class> class AllocatorT>

@@ -12,7 +12,6 @@ struct ClassImpl::Detail
     HSQOBJECT classObject;
     HSQOBJECT setTable;
     HSQOBJECT getTable;
-    SQUserPointer typeTag;
 
     Detail()
     {
@@ -21,9 +20,16 @@ struct ClassImpl::Detail
         sq_resetobject(&getTable);
     }
 
+	~Detail()
+	{
+		sq_resetobject(&classObject);
+		sq_resetobject(&setTable);
+		sq_resetobject(&getTable);
+	}
+
     void registerClosure(HSQUIRRELVM v, ClosureType type, const String& name, Func func)
     {
-        static const HSQOBJECT* registerAs[] = { &classObject, &setTable, &getTable };
+        const HSQOBJECT* registerAs[] = { &classObject, &setTable, &getTable };
 
         sq_pushobject(v, *registerAs[static_cast<int>(type)]);
         sq_pushstring(v, name.c_str(), name.size());
@@ -66,18 +72,25 @@ struct ClassImpl::Detail
     }
 };
 
-ClassImpl::ClassImpl(const Context& context, const String& name, size_t typeTag)
-    : detail_(new Detail()), context_(context), name_(name)
+ClassImpl::ClassImpl(const Context& context)
+    : detail_(new Detail())
+	, context_(context)
 {
-    detail_->typeTag = reinterpret_cast<SQUserPointer>(typeTag);
+}
 
+ClassImpl::~ClassImpl()
+{
+}
+
+void ClassImpl::initialize(const String& name, size_t typeTag)
+{
     auto v = context_.getHandle();
 
     sq_pushroottable(v);
 
     sq_pushstring(v, name.c_str(), name.size());
     sq_newclass(v, SQFalse);
-    sq_settypetag(v, -1, detail_->typeTag);
+    sq_settypetag(v, -1, reinterpret_cast<SQUserPointer>(typeTag));
     sq_getstackobj(v, -1, &detail_->classObject);
     sq_newslot(v, -3, SQFalse);
 
@@ -124,10 +137,6 @@ ClassImpl::ClassImpl(const Context& context, const String& name, size_t typeTag)
     sq_newslot(v, -3, SQFalse);
 
     sq_pop(v, 1);
-}
-
-ClassImpl::~ClassImpl()
-{
 }
 
 void ClassImpl::registerConstructor(Func func)
@@ -181,9 +190,8 @@ void* ClassImpl::getInstance(HSQUIRRELVM v, Integer index, size_t typeTag)
 }
 
 ClassImpl::ClassImpl(ClassImpl&& rhs)
-    : detail_(std::move(detail_))
+	: detail_(std::move(rhs.detail_))
     , context_(std::move(rhs.context_))
-    , name_(std::move(rhs.name_))
 {}
 
 template<>

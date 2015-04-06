@@ -69,6 +69,8 @@ Context::~Context()
 
 void Context::initialize()
 {
+    sq_setforeignptr(vm_, this);
+
     sq_setprintfunc(vm_, Detail::print, Detail::printError);
 
     sq_pushroottable(vm_);
@@ -84,10 +86,6 @@ void Context::initialize()
     sq_pop(vm_, 1);
 
     sq_pushregistrytable(vm_);
-
-    sq_pushstring(vm_, _SC("__sqrew_context"), -1);
-    sq_pushuserpointer(vm_, this);
-    sq_newslot(vm_, -3, SQTrue);
 
     sq_pushstring(vm_, _SC("__sqrew_classes"), -1);
     sq_newtable(vm_);
@@ -188,21 +186,9 @@ void Context::Detail::handleCompilerError(HSQUIRRELVM vm,
 
 }
 
-Context *Context::Detail::getContext(HSQUIRRELVM vm)
+Context* Context::Detail::getContext(HSQUIRRELVM vm)
 {
-    StackGuard guard(vm); (void)guard;
-
-    sq_pushregistrytable(vm);
-    sq_pushstring(vm, _SC("__sqrew_context"), -1);
-
-    if (SQ_FAILED( sq_get(vm, -2) ))
-        return nullptr;
-
-    Context* context;
-    if (SQ_FAILED( sq_getuserpointer(vm, -1, (SQUserPointer*)&context) ))
-        return nullptr;
-
-    return context;
+    return static_cast<Context*>(sq_getforeignptr(vm));
 }
 
 } // namespace sqrew
