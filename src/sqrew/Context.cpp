@@ -89,6 +89,10 @@ void Context::initialize()
     sq_pushuserpointer(vm_, this);
     sq_newslot(vm_, -3, SQTrue);
 
+    sq_pushstring(vm_, _SC("__sqrew_classes"), -1);
+    sq_newtable(vm_);
+    sq_newslot(vm_, -3, SQTrue);
+
     sq_pop(vm_, 1);
 }
 

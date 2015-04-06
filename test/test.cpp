@@ -52,6 +52,10 @@ public:
     }
 };
 
+void extendTest(ExposeTest* expose, float xx)
+{
+    std::cout << "hello from extension method. you passed " << xx << ". and f value is " << expose->f << std::endl;
+}
 
 template<class ClassT>
 struct SharedCreationAllocator
@@ -67,78 +71,6 @@ struct SharedCreationAllocator
     inline static ClassT* castInstance(Pointer ptr) { return ptr->get(); }
 };
 
-template<class ClassT, class ReturnT, class ...ArgsT>
-class MethodDelegate
-{
-public:
-    using Method = ReturnT (ClassT::*)(ArgsT...);
-    using ConstMethod = ReturnT (ClassT::*)(ArgsT...) const;
-
-    explicit MethodDelegate(Method method)
-        : method_(method)
-        , invoke_(callMethod)
-    {}
-
-    explicit MethodDelegate(ConstMethod method)
-        : constMethod_(method)
-        , invoke_(callConstMethod)
-    {}
-
-    ReturnT operator()(ClassT* instance, ArgsT&&... args)
-    {
-        return invoke_(this, instance, std::forward<ArgsT>(args)...);
-    }
-
-private:
-    using MathodInvoke = ReturnT (*)(MethodDelegate* self, ClassT* instance,  ArgsT&&... args);
-
-    Method method_;
-    ConstMethod constMethod_;
-    MathodInvoke invoke_;
-
-    static ReturnT callMethod(MethodDelegate* self, ClassT* instance,  ArgsT&&... args)
-    {
-        return (instance->*self->method_)(std::forward<ArgsT>(args)...);
-    }
-
-    static ReturnT callConstMethod(MethodDelegate* self, ClassT* instance,  ArgsT&&... args)
-    {
-        return (instance->*self->method_)(std::forward<ArgsT>(args)...);
-    }
-};
-
-namespace sqrew {
-
-    class Expose
-    {
-    public:
-
-        class Table;
-
-        template<class ...ArgsT>
-        Expose(Context& context, ArgsT... path)
-            : vm_(context.getHandle())
-        {
-            std::array<String, sizeof...(ArgsT)> package = {{ path... }};
-        }
-
-        /*template<class ClassT>
-        Class<ClassT> addClass(const String& name)
-        {
-            return Class<ClassT>();
-        }*/
-
-    private:
-        HSQUIRRELVM vm_;
-    };
-}
-
-
-void func()
-{
-
-}
-
 int main(int /*argc*/, char * /*argv*/[])
 {
     sqrew::Context context;
@@ -146,21 +78,22 @@ int main(int /*argc*/, char * /*argv*/[])
     context.setInterface<TestInterface>();
 
     //sqrew::Class<ExposeTest>::expose(context, "package.name.ExposeTest")
-    sqrew::Class<ExposeTest, SharedCreationAllocator>::expose(context, "ExposeTest")
-        .setConstructor<>()
-        //.setConstructor<int>()
+    sqrew::Class<ExposeTest>::expose(context, "ExposeTest")
+        //.setConstructor<>()
+        .setConstructor<int>()
         //.setMethod("someMethod", &ExposeTest::someMethod)
         .setMethod("getF", &ExposeTest::getF)
         .setMethod("setF", &ExposeTest::setF)
+        .setMethod("extendTest", extendTest)
         //.setField("f", &ExposeTest::f)
-        //.setField("f", &ExposeTest::getF, &ExposeTest::setF)
+        .setField("f", &ExposeTest::setF, &ExposeTest::getF)
         ;
 
     //Class<ExposeTest>(context)
     //    .construct()
 
 
-    bool result = context.executeBuffer("local foo = ExposeTest(); \n foo.setF(17); \n local f = foo.getF(); \n ::print(f);");
+    bool result = context.executeBuffer("local foo = ExposeTest(6464); \n ::print(foo.f); \n foo.f = 32; \n foo.extendTest(27.4); \n foo.setF(17); \n local f = foo.getF(); \n ::print(f);");
     int kp = 90;
     int nno = kp + 87;
     return 0;

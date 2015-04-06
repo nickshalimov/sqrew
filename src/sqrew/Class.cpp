@@ -4,30 +4,123 @@
 
 #include <squirrel.h>
 
-
 namespace sqrew {
 namespace detail {
 
 struct ClassImpl::Detail
 {
     HSQOBJECT classObject;
+    HSQOBJECT setTable;
+    HSQOBJECT getTable;
     SQUserPointer typeTag;
+
+    Detail()
+    {
+        sq_resetobject(&classObject);
+        sq_resetobject(&setTable);
+        sq_resetobject(&getTable);
+    }
+
+    void registerClosure(HSQUIRRELVM v, ClosureType type, const String& name, Func func)
+    {
+        static const HSQOBJECT* registerAs[] = { &classObject, &setTable, &getTable };
+
+        sq_pushobject(v, *registerAs[static_cast<int>(type)]);
+        sq_pushstring(v, name.c_str(), name.size());
+        sq_push(v, -3);
+        sq_newclosure(v, func, 1);
+        sq_setnativeclosurename(v, -1, name.c_str());
+        sq_newslot(v, -3, SQFalse);
+        sq_pop(v, 2);
+    }
+
+    static int set(HSQUIRRELVM v)
+    {
+        sq_push(v, 2);
+        if (SQ_FAILED( sq_get(v, -2) ))
+        {
+            //String errorMessage
+            return sq_throwerror(v, _SC("the index '' does not exist"));
+        }
+
+        sq_push(v, 1);
+        sq_push(v, 3);
+
+        sq_call(v, 2, SQFalse, SQTrue);
+        return 0;
+    }
+
+    static int get(HSQUIRRELVM v)
+    {
+        sq_push(v, 2);
+        if (SQ_FAILED( sq_get(v, -2) ))
+        {
+            //String errorMessage
+            return sq_throwerror(v, _SC("the index '' does not exist"));
+        }
+
+        sq_push(v, 1);
+
+        sq_call(v, 1, SQTrue, SQTrue);
+        return 1;
+    }
 };
 
 ClassImpl::ClassImpl(const Context& context, const String& name, size_t typeTag)
     : detail_(new Detail()), context_(context), name_(name)
 {
     detail_->typeTag = reinterpret_cast<SQUserPointer>(typeTag);
-    sq_resetobject(&detail_->classObject);
 
     auto v = context_.getHandle();
 
     sq_pushroottable(v);
 
     sq_pushstring(v, name.c_str(), name.size());
-    sq_newclass(v, false);
+    sq_newclass(v, SQFalse);
     sq_settypetag(v, -1, detail_->typeTag);
     sq_getstackobj(v, -1, &detail_->classObject);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pop(v, 1);
+
+    sq_pushregistrytable(v);
+
+    sq_pushstring(v, _SC("__sqrew_classes"), -1);
+    sq_get(v, -2);
+
+    HSQOBJECT registryTable;
+    sq_resetobject(&registryTable);
+    sq_pushstring(v, name.c_str(), name.size());
+    sq_newtable(v);
+    sq_getstackobj(v, -1, &registryTable);
+    sq_newslot(v, -3, SQTrue);
+
+    sq_pop(v, 2);
+
+    sq_pushobject(v, registryTable);
+
+    sq_pushstring(v, _SC("set"), -1);
+    sq_newtable(v);
+    sq_getstackobj(v, -1, &detail_->setTable);
+    sq_newslot(v, -3, SQTrue);
+
+    sq_pushstring(v, _SC("get"), -1);
+    sq_newtable(v);
+    sq_getstackobj(v, -1, &detail_->getTable);
+    sq_newslot(v, -3, SQTrue);
+
+    sq_pop(v, 1);
+
+    sq_pushobject(v, detail_->classObject);
+
+    sq_pushstring(v, _SC("_set"), -1);
+    sq_pushobject(v, detail_->setTable);
+    sq_newclosure(v, Detail::set, 1);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, _SC("_get"), -1);
+    sq_pushobject(v, detail_->getTable);
+    sq_newclosure(v, Detail::get, 1);
     sq_newslot(v, -3, SQFalse);
 
     sq_pop(v, 1);
@@ -35,7 +128,6 @@ ClassImpl::ClassImpl(const Context& context, const String& name, size_t typeTag)
 
 ClassImpl::~ClassImpl()
 {
-    sq_resetobject(&detail_->classObject);
 }
 
 void ClassImpl::registerConstructor(Func func)
@@ -49,36 +141,23 @@ void ClassImpl::registerConstructor(Func func)
     sq_pop(v, 1);
 }
 
-void ClassImpl::registerMethod(const String& name, Func func)
+void ClassImpl::registerClosure(ClassImpl::ClosureType type, const String& name, ClassImpl::Func func)
 {
     auto v = context_.getHandle();
-
-    sq_pushobject(v, detail_->classObject);
-    sq_pushstring(v, name.c_str(), name.size());
-    sq_push(v, -3);
-    sq_newclosure(v, func, 1);
-    sq_setnativeclosurename(v, -1, name.c_str());
-    sq_newslot(v, -3, false);
-    sq_pop(v, 2);
+    detail_->registerClosure(v, type, name, func);
 }
 
 void* ClassImpl::createUserData(HSQUIRRELVM v, size_t size, ReleaseHook releaseHook)
 {
     auto ptr = sq_newuserdata(v, size);
-    sq_setreleasehook(v, -1, releaseHook);
+    if (releaseHook != nullptr)
+        sq_setreleasehook(v, -1, releaseHook);
     return ptr;
 }
 
 void *ClassImpl::createUserData(size_t size, ClassImpl::ReleaseHook releaseHook)
 {
     return createUserData(context_.getHandle(), size, releaseHook);
-}
-
-void* ClassImpl::getCalleeInstance(HSQUIRRELVM v)
-{
-    SQUserPointer ptr;
-    sq_getuserdata(v, 1, &ptr, nullptr);
-    return ptr;
 }
 
 void* ClassImpl::getUserData(HSQUIRRELVM v, Integer index)

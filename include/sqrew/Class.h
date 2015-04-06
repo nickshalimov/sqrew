@@ -13,6 +13,8 @@ namespace detail {
 class ClassImpl
 {
 protected:
+    enum class ClosureType { Method = 0, Setter, Getter };
+
     using Func = Integer (*)(HSQUIRRELVM);
     using ReleaseHook = Integer (*)(void*, Integer);
 
@@ -20,7 +22,7 @@ protected:
     virtual ~ClassImpl();
 
     void registerConstructor(Func func);
-    void registerMethod(const String& name, Func func);
+    void registerClosure(ClosureType type, const String& name, Func func);
 
     static void* createUserData(HSQUIRRELVM v, size_t size, ReleaseHook releaseHook);
     void* createUserData(size_t size, ReleaseHook releaseHook);
@@ -99,7 +101,7 @@ struct DefaultAllocator
     using Pointer = ClassT*;
 
     template<class ...ArgsT>
-    inline static Pointer createInstance(ArgsT&&... args) { return new ClassT(std::forward<ArgsT>...); }
+    inline static Pointer createInstance(ArgsT&&... args) { return new ClassT(std::forward<ArgsT>(args)...); }
 
     inline static void destroyInstance(Pointer instance) { delete instance; }
 
@@ -109,7 +111,7 @@ struct DefaultAllocator
 template<class ClassT, template<class> class AllocatorT = DefaultAllocator>
 class Class: protected detail::ClassImpl
 {
-    static constexpr size_t getTypeTag() { return typeid(ClassT).hash_code(); }
+    static size_t getTypeTag() { return typeid(ClassT).hash_code(); }
 
     using Allocator = AllocatorT<ClassT>;
 
@@ -143,7 +145,7 @@ class Class: protected detail::ClassImpl
     }
 
     template<class ReturnT, class ...ArgsT>
-    static Integer callMethodDelegate(HSQUIRRELVM v)
+    static Integer callMethod(HSQUIRRELVM v)
     {
         auto instance = static_cast<typename Allocator::Pointer>(getInstance(v, 1, getTypeTag()));
         auto method = static_cast<MethodDelegate<ReturnT, ArgsT...>*>(getUserData(v, -1));
@@ -153,8 +155,28 @@ class Class: protected detail::ClassImpl
         return result.flush(v);
     }
 
+    template<class FieldT>
+    static Integer callSetter(HSQUIRRELVM v)
+    {
+        auto instance = static_cast<typename Allocator::Pointer>(getInstance(v, 1, getTypeTag()));
+        auto field = static_cast<Field<FieldT>*>(getUserData(v, -1));
+
+        Allocator::castInstance(instance)->*(*field) = getValue<FieldT>(v, 2);
+        return 0;
+    }
+
+    template<class FieldT>
+    static Integer callGetter(HSQUIRRELVM v)
+    {
+        auto instance = static_cast<typename Allocator::Pointer>(getInstance(v, 1, getTypeTag()));
+        auto field = static_cast<Field<FieldT>*>(getUserData(v, -1));
+
+        putValue(v, Allocator::castInstance(instance)->*(*field));
+        return 1;
+    }
+
     template<class ReturnT, class ...ArgsT>
-    static Integer releaseMethodDelegate(void* ptr, Integer)
+    static Integer releaseMethod(void* ptr, Integer)
     {
         auto instance = reinterpret_cast<MethodDelegate<ReturnT, ArgsT...>*>(ptr);
         instance->~MethodDelegate<ReturnT, ArgsT...>();
@@ -162,11 +184,27 @@ class Class: protected detail::ClassImpl
     }
 
     template<class ReturnT, class ...ArgsT>
-    void addDelegate(const String& name, MethodDelegate<ReturnT, ArgsT...>&& methodDelegate)
+    void addMethod(ClosureType type, const String& name, MethodDelegate<ReturnT, ArgsT...>&& methodDelegate)
     {
-        auto ptr = createUserData(sizeof(MethodDelegate<ReturnT, ArgsT...>), releaseMethodDelegate<ReturnT, ArgsT...>);
+        auto ptr = createUserData(sizeof(MethodDelegate<ReturnT, ArgsT...>), releaseMethod<ReturnT, ArgsT...>);
         *reinterpret_cast<MethodDelegate<ReturnT, ArgsT...>*>(ptr) = std::move(methodDelegate);
-        registerMethod(name, callMethodDelegate<ReturnT, ArgsT...>);
+        registerClosure(type, name, callMethod<ReturnT, ArgsT...>);
+    }
+
+    template<class FieldT>
+    void addSetter(const String& name, Field<FieldT> field)
+    {
+        auto ptr = createUserData(sizeof(Field<FieldT>), nullptr);
+        *reinterpret_cast<Field<FieldT>*>(ptr) = field;
+        registerClosure(ClosureType::Setter, name, callSetter<FieldT>);
+    }
+
+    template<class FieldT>
+    void addGetter(const String& name, Field<FieldT> field)
+    {
+        auto ptr = createUserData(sizeof(Field<FieldT>), nullptr);
+        *reinterpret_cast<Field<FieldT>*>(ptr) = field;
+        registerClosure(ClosureType::Getter, name, callGetter<FieldT>);
     }
 
 public:
@@ -185,39 +223,45 @@ public:
     template<class ReturnT, class ...ArgsT>
     Class& setMethod(const String& name, Method<ReturnT, ArgsT...> method)
     {
-        addDelegate(name, MethodDelegate<ReturnT, ArgsT...>(method));
+        addMethod(ClosureType::Method, name, MethodDelegate<ReturnT, ArgsT...>(method));
         return *this;
     }
 
     template<class ReturnT, class ...ArgsT>
     Class& setMethod(const String& name, ConstMethod<ReturnT, ArgsT...> method)
     {
-        addDelegate(name, MethodDelegate<ReturnT, ArgsT...>(method));
+        addMethod(ClosureType::Method, name, MethodDelegate<ReturnT, ArgsT...>(method));
         return *this;
     }
 
     template<class ReturnT, class ...ArgsT>
     Class& setMethod(const String& name, ExtensionMethod<ReturnT, ArgsT...> method)
     {
-        addDelegate(name, MethodDelegate<ReturnT, ArgsT...>(method));
+        addMethod(ClosureType::Method, name, MethodDelegate<ReturnT, ArgsT...>(method));
         return *this;
     }
 
     template<class FieldT>
     Class& setField(const String& name, Field<FieldT> field)
     {
+        addSetter(name, field);
+        addGetter(name, field);
         return *this;
     }
 
     template<class FieldT>
-    Class& setField(const String& name, ConstMethod<FieldT> getter, Method<void, FieldT> setter)
+    Class& setField(const String& name, Method<void, FieldT> setter, ConstMethod<FieldT> getter)
     {
+        addMethod(ClosureType::Setter, name, MethodDelegate<void, FieldT>(setter));
+        addMethod(ClosureType::Getter, name, MethodDelegate<FieldT>(getter));
         return *this;
     }
 
     template<class FieldT>
-    Class& setField(const String& name, Method<FieldT> getter, Method<void, FieldT> setter)
+    Class& setField(const String& name, Method<void, FieldT> setter, Method<FieldT> getter)
     {
+        addMethod(ClosureType::Setter, name, MethodDelegate<void, FieldT>(setter));
+        addMethod(ClosureType::Getter, name, MethodDelegate<FieldT>(getter));
         return *this;
     }
 
@@ -234,9 +278,15 @@ template<class ReturnT, class ...ArgsT>
 class Class<ClassT, AllocatorT>::MethodDelegate
 {
 public:
+#if defined(__GNUC__)
     using Method = Class<ClassT, AllocatorT>::Method<ReturnT, ArgsT...>;
     using ConstMethod = Class<ClassT, AllocatorT>::ConstMethod<ReturnT, ArgsT...>;
     using ExtensionMethod = Class<ClassT, AllocatorT>::ExtensionMethod<ReturnT, ArgsT...>;
+#elif defined(_MSC_VER)
+    using Method = Class<ClassT, AllocatorT>::template Method<ReturnT, ArgsT...>;
+    using ConstMethod = Class<ClassT, AllocatorT>::template ConstMethod<ReturnT, ArgsT...>;
+    using ExtensionMethod = Class<ClassT, AllocatorT>::template ExtensionMethod<ReturnT, ArgsT...>;
+#endif
 
     explicit MethodDelegate(Method method)
         : method_(method)
@@ -261,9 +311,13 @@ public:
 private:
     using MethodInvoke = ReturnT (*)(MethodDelegate* self, ClassT* instance, ArgsT&&... args);
 
-    Method method_;
-    ConstMethod constMethod_;
-    ExtensionMethod extensionMethod_;
+    union
+    {
+        Method method_;
+        ConstMethod constMethod_;
+        ExtensionMethod extensionMethod_;
+    };
+
     MethodInvoke invoke_;
 
     static ReturnT invokeMethod(MethodDelegate* self, ClassT* instance, ArgsT&&... args)
