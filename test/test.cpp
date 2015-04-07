@@ -2,6 +2,8 @@
 #include <sqrew/Interface.h>
 #include <sqrew/Class.h>
 
+#include <sqrew/Instance.h>
+
 #include <iostream>
 #include <array>
 
@@ -92,6 +94,14 @@ int main(int /*argc*/, char * /*argv*/[])
     //Class<ExposeTest>(context)
     //    .construct()
 
+
+    sqrew::Instance instance(context, "ExposeTest");
+
+    auto call = instance.getMethod("setF");
+    if (call.isValid())
+        call(12);
+
+    //auto callResult = instance.call<int>("getF");
 
     bool result = context.executeBuffer("local foo = ExposeTest(6464); \n ::print(foo.f); \n foo.f = 32; \n foo.extendTest(27.4); \n foo.setF(17); \n local f = foo.getF(); \n ::print(f);");
     int kp = 90;

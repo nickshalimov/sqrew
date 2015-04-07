@@ -5,6 +5,7 @@
 #include <typeindex>
 
 #include "sqrew/Forward.h"
+#include "sqrew/Utils.h"
 
 namespace sqrew {
 
@@ -39,10 +40,10 @@ protected:
     template<class ValueT>
     static void putValue(HSQUIRRELVM v, ValueT value);
 
-    ClassImpl(ClassImpl&& rhs);
-
     template<class ValueT>
-    struct Return;
+    static void putReturn(HSQUIRRELVM v, const Return<ValueT>& ret);
+
+    ClassImpl(ClassImpl&& rhs);
 
 private:
     struct Detail;
@@ -56,44 +57,14 @@ private:
 };
 
 template<class ValueT>
-struct ClassImpl::Return
+inline void ClassImpl::putReturn(HSQUIRRELVM v, const Return<ValueT>& ret)
 {
-    ValueT value;
-
-    template<class FuncT, class ...ArgsT>
-    Return(FuncT func, ArgsT&&... args)
-        : value(func(std::forward<ArgsT>(args)...))
-    {}
-
-    Integer flush(HSQUIRRELVM v)
-    {
-        ClassImpl::putValue(v, value);
-        return 1;
-    }
-};
+    putValue<ValueT>(v, ret.getValue());
+}
 
 template<>
-struct ClassImpl::Return<void>
-{
-    template<class FuncT, class ...ArgsT>
-    Return(FuncT func, ArgsT&&... args) { func(std::forward<ArgsT>(args)...); }
+inline void ClassImpl::putReturn(HSQUIRRELVM, const Return<void>&) {}
 
-    Integer flush(HSQUIRRELVM) { return 0; }
-};
-/*
-template<class ...ReturnT>
-struct ClassImpl::Return<std::tuple<ReturnT...>>
-{
-    std::tuple<ReturnT...> result;
-
-    template<class FuncT, class ...ArgsT>
-    Return(FuncT func, ArgsT&&... args)
-        : result(func(std::forward<ArgsT>(args)...))
-    {}
-
-    Integer flush(HSQUIRRELVM) { return 0; }
-};
-*/
 }
 
 template<class ClassT>
@@ -153,7 +124,8 @@ class Class: protected detail::ClassImpl
 
         Integer index = 2;
         auto result = method->invoke(Allocator::castInstance(instance), getValue<ArgsT>(v, index++)...);
-        return result.flush(v);
+        putReturn<ReturnT>(v, result);
+        return Return<ReturnT>::size;
     }
 
     template<class FieldT>

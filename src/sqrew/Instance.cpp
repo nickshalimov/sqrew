@@ -13,4 +13,9 @@ Instance::Instance(const Context& context, const String& className)
 
 }
 
+Instance::~Instance()
+{
+
+}
+
 } // namespace sqrew
