@@ -1,5 +1,8 @@
 #include "sqrew/Context.h"
 
+#include "sqrew/Interface.h"
+#include "sqrew/Table.h"
+
 #include <cstdarg>
 #include <cstdio>
 
@@ -12,8 +15,6 @@
 #include <sqstdblob.h>
 #include <sqstdaux.h>
 #include <sqstdio.h>
-
-#include "sqrew/Interface.h"
 
 namespace sqrew {
 
@@ -85,13 +86,7 @@ void Context::initialize()
 
     sq_pop(vm_, 1);
 
-    sq_pushregistrytable(vm_);
-
-    sq_pushstring(vm_, _SC("__sqrew_classes"), -1);
-    sq_newtable(vm_);
-    sq_newslot(vm_, -3, SQTrue);
-
-    sq_pop(vm_, 1);
+    Table::create(*this, _SC("__sqrew_classes"), TableDomain::Registry);
 }
 
 bool Context::executeBuffer(const String& buffer) const
@@ -109,18 +104,6 @@ bool Context::executeBuffer(const String& buffer, const String& source) const
 
     sq_push(vm_, -2);
     return SQ_SUCCEEDED( sq_call(vm_, 1, SQFalse, SQTrue) );
-}
-
-namespace {
-
-static String makeString(const SQChar* format, va_list* args)
-{
-    auto size = vsnprintf(nullptr, 0, format, *args);
-    std::vector<char> chars(size + 1, 0);
-    size = vsnprintf(&chars[0], size, format, *args);
-    return String(chars.begin(), chars.end());
-}
-
 }
 
 void Context::Detail::print(HSQUIRRELVM vm, const SQChar* format, ...)

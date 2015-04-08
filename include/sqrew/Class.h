@@ -19,7 +19,7 @@ protected:
     using Func = Integer (*)(HSQUIRRELVM);
     using ReleaseHook = Integer (*)(void*, Integer);
 
-    ClassImpl(const Context& context);
+    explicit ClassImpl(const Context& context);
     virtual ~ClassImpl();
 
     void initialize(const String& name, size_t typeTag);
@@ -68,6 +68,37 @@ inline void ClassImpl::putReturn(HSQUIRRELVM, const Return<void>&) {}
 }
 
 template<class ClassT>
+class DefaultProxy
+{
+    using Handle = ClassT*;
+
+    template<class ...ArgsT>
+    inline Handle createHandle(ArgsT&&... args) { return new ClassT(std::forward<ArgsT>(args)...); }
+
+    inline void releaseHandle(Handle handle) { delete handle; }
+
+    inline ClassT* getPointer(Handle handle) { return handle; }
+};
+
+/*template<class ClassT>
+class SharedProxy
+{
+public:
+    using PointerExt = const std::shared_ptr<ClassT>&;
+
+    template<class ...ArgsT>
+    explicit SharedProxy(ArgsT&&... args)
+        : pointer_(new ClassT(std::forward<ArgsT>(args)...))
+    {}
+
+    const ClassT* getPointer() const { return pointer_.get(); }
+    PointerExt getPointerExt() const { return pointer_; }
+
+private:
+    std::shared_ptr<ClassT> pointer_;
+};*/
+
+template<class ClassT>
 struct DefaultAllocator
 {
     using Pointer = ClassT*;
@@ -102,7 +133,7 @@ class Class: protected detail::ClassImpl
     template<class ReturnT, class ...ArgsT>
     class MethodDelegate;
 
-    static Integer destroyInstance(void* ptr, Integer)
+    static Integer releaseInstance(void* ptr, Integer)
     {
         Allocator::destroyInstance(static_cast<typename Allocator::Pointer>(ptr));
         return 0;
@@ -112,7 +143,7 @@ class Class: protected detail::ClassImpl
     static Integer createInstance(HSQUIRRELVM v)
     {
         Integer index = 2;
-        setInstance(v, 1, Allocator::createInstance(getValue<ArgsT>(v, index++)...), destroyInstance);
+        setInstance(v, 1, Allocator::createInstance(getValue<ArgsT>(v, index++)...), releaseInstance);
         return 0;
     }
 
@@ -180,11 +211,16 @@ class Class: protected detail::ClassImpl
         registerClosure(ClosureType::Getter, name, callGetter<FieldT>);
     }
 
+    void initialize(const String& name)
+    {
+        ClassImpl::initialize(name, getTypeTag());
+    }
+
 public:
-    static Class expose(const Context& context, const String& fullName)
+    static Class expose(const Context& context, const String& name)
     {
 		Class definition(context);
-		definition.initialize(fullName, getTypeTag());
+        definition.initialize(name);
 		return std::move(definition);
     }
 
@@ -241,7 +277,7 @@ public:
     }
 
 private:
-    Class(const Context& context)
+    explicit Class(const Context& context)
         : detail::ClassImpl(context) {}
 
     Class(Class&& rhs)
@@ -253,15 +289,9 @@ template<class ReturnT, class ...ArgsT>
 class Class<ClassT, AllocatorT>::MethodDelegate
 {
 public:
-#if defined(__GNUC__)
-    using Method = Class<ClassT, AllocatorT>::Method<ReturnT, ArgsT...>;
-    using ConstMethod = Class<ClassT, AllocatorT>::ConstMethod<ReturnT, ArgsT...>;
-    using ExtensionMethod = Class<ClassT, AllocatorT>::ExtensionMethod<ReturnT, ArgsT...>;
-#elif defined(_MSC_VER)
-    using Method = Class<ClassT, AllocatorT>::template Method<ReturnT, ArgsT...>;
-    using ConstMethod = Class<ClassT, AllocatorT>::template ConstMethod<ReturnT, ArgsT...>;
-    using ExtensionMethod = Class<ClassT, AllocatorT>::template ExtensionMethod<ReturnT, ArgsT...>;
-#endif
+    using Method = ReturnT (ClassT::*)(ArgsT...);
+    using ConstMethod = ReturnT (ClassT::*)(ArgsT...) const;
+    using ExtensionMethod = ReturnT (*)(typename AllocatorT<ClassT>::Pointer, ArgsT...);
 
     explicit MethodDelegate(Method method)
         : method_(method)

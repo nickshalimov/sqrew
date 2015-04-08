@@ -2,7 +2,13 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "sqrew/Forward.h"
+
 #include <tuple>
+#include <vector>
+#include <sstream>
+
+namespace sqrew {
 
 template<class ValueT>
 class Return
@@ -15,7 +21,7 @@ public:
         : value_(func(std::forward<ArgsT>(args)...))
     {}
 
-    const ValueT& getValue() const { return value_; }
+    inline const ValueT& getValue() const { return value_; }
 
 private:
     ValueT value_;
@@ -34,6 +40,20 @@ public:
     }
 };
 
+inline std::vector<String> splitPath(const String& path)
+{
+    auto delim = '.';
+
+    std::basic_istringstream<String::value_type> stream(path);
+    std::vector<String> items;
+    String string;
+
+    while (std::getline(stream, string, delim))
+        items.push_back(string);
+
+    return std::move(items);
+}
+
 /*
 template<class ...ReturnT>
 struct ClassImpl::Return<std::tuple<ReturnT...>>
@@ -48,5 +68,7 @@ struct ClassImpl::Return<std::tuple<ReturnT...>>
     Integer flush(HSQUIRRELVM) { return 0; }
 };
 */
+
+} // namespace sqrew
 
 #endif // UTILS_H

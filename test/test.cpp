@@ -1,6 +1,7 @@
 #include <sqrew/Context.h>
 #include <sqrew/Interface.h>
 #include <sqrew/Class.h>
+#include <sqrew/Table.h>
 
 #include <sqrew/Instance.h>
 
@@ -60,6 +61,20 @@ void extendTest(ExposeTest* expose, float xx)
 }
 
 template<class ClassT>
+struct MyDefaultAllocator
+{
+    using Pointer = ClassT*;
+
+    template<class ...ArgsT>
+    inline static Pointer createInstance(ArgsT&&... args) { return new ClassT(std::forward<ArgsT>(args)...); }
+
+    inline static void destroyInstance(Pointer instance) { delete instance; }
+
+    inline static ClassT* castInstance(Pointer ptr) { return ptr; }
+};
+
+
+template<class ClassT>
 struct SharedCreationAllocator
 {
     using Shared = std::shared_ptr<ClassT>;
@@ -79,21 +94,15 @@ int main(int /*argc*/, char * /*argv*/[])
     context.initialize();
     context.setInterface<TestInterface>();
 
-    //sqrew::Class<ExposeTest>::expose(context, "package.name.ExposeTest")
     sqrew::Class<ExposeTest>::expose(context, "ExposeTest")
-        //.setConstructor<>()
         .setConstructor<int>()
-        //.setMethod("someMethod", &ExposeTest::someMethod)
         .setMethod("getF", &ExposeTest::getF)
         .setMethod("setF", &ExposeTest::setF)
         .setMethod("extendTest", extendTest)
-        //.setField("f", &ExposeTest::f)
-        .setField("f", &ExposeTest::setF, &ExposeTest::getF)
-        ;
+        .setField("f", &ExposeTest::setF, &ExposeTest::getF);
 
-    //Class<ExposeTest>(context)
-    //    .construct()
-
+    auto table = sqrew::Table::create(context, "com.package.name");
+    auto table1 = sqrew::Table::create(context, "com.package.name");
 
     sqrew::Instance instance(context, "ExposeTest");
 

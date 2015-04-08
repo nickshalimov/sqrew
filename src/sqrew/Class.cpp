@@ -1,6 +1,7 @@
 #include "sqrew/Class.h"
 
 #include "sqrew/Context.h"
+#include "sqrew/Table.h"
 
 #include <squirrel.h>
 
@@ -13,6 +14,8 @@ struct ClassImpl::Detail
     HSQOBJECT setTable;
     HSQOBJECT getTable;
 
+    bool isConstructorSet = false;
+
     Detail()
     {
         sq_resetobject(&classObject);
@@ -20,12 +23,7 @@ struct ClassImpl::Detail
         sq_resetobject(&getTable);
     }
 
-	~Detail()
-	{
-		sq_resetobject(&classObject);
-		sq_resetobject(&setTable);
-		sq_resetobject(&getTable);
-	}
+    ~Detail() {}
 
     void registerClosure(HSQUIRRELVM v, ClosureType type, const String& name, Func func)
     {
@@ -75,16 +73,16 @@ struct ClassImpl::Detail
 ClassImpl::ClassImpl(const Context& context)
     : detail_(new Detail())
 	, context_(context)
-{
-}
+{}
 
-ClassImpl::~ClassImpl()
-{
-}
+ClassImpl::~ClassImpl() {}
 
 void ClassImpl::initialize(const String& name, size_t typeTag)
 {
     auto v = context_.getHandle();
+
+    //auto rootTable = Table::getRoot(context_);
+    //rootTable.createClass(name);
 
     sq_pushroottable(v);
 
@@ -95,6 +93,13 @@ void ClassImpl::initialize(const String& name, size_t typeTag)
     sq_newslot(v, -3, SQFalse);
 
     sq_pop(v, 1);
+
+    /*
+    auto classesTable = Table::create(context_, _SC("__sqrew_classes"), TableDomain::Registry);
+    auto classRegistry = classesTable.createTable(name);
+    auto setTable = classRegistry.create("set");
+    auto getTable = classRegistry.create("get");
+    */
 
     sq_pushregistrytable(v);
 
@@ -143,11 +148,16 @@ void ClassImpl::registerConstructor(Func func)
 {
     auto v = context_.getHandle();
 
+    if (detail_->isConstructorSet)
+        throw std::runtime_error("Class can have only one constructor");
+
     sq_pushobject(v, detail_->classObject);
     sq_pushstring(v, _SC("constructor"), -1);
     sq_newclosure(v, func, 0);
     sq_newslot(v, -3, false);
     sq_pop(v, 1);
+
+    detail_->isConstructorSet = true;
 }
 
 void ClassImpl::registerClosure(ClassImpl::ClosureType type, const String& name, ClassImpl::Func func)

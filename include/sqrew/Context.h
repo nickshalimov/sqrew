@@ -6,7 +6,7 @@
 
 namespace sqrew {
 
-class Context
+class Context final
 {
 public:
     Context();

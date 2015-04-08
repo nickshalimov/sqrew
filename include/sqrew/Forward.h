@@ -6,11 +6,13 @@
 #include <memory>
 
 typedef struct SQVM* HSQUIRRELVM;
+//#define SQREW_STR(a) a
 
 namespace sqrew {
 
 class Context;
 class Interface;
+class Table;
 
 using String = std::string;
 using Integer = int;
