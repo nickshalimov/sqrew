@@ -7,6 +7,8 @@
 #include <tuple>
 #include <vector>
 #include <sstream>
+#include <functional>
+#include <algorithm>
 
 namespace sqrew {
 
@@ -39,6 +41,20 @@ public:
         func(std::forward<ArgsT>(args)...);
     }
 };
+
+template<class FuncT>
+inline bool iteratePath(const String& path, FuncT func)
+{
+    auto delim = '.';
+    std::basic_istringstream<String::value_type> stream(path);
+    String string;
+    bool next = true;
+
+    while (next && std::getline(stream, string, delim))
+        next = func(string);
+
+    return next;
+}
 
 inline std::vector<String> splitPath(const String& path)
 {

@@ -6,13 +6,15 @@
 
 namespace sqrew {
 
-enum class TableDomain { Script, Registry };
+enum class TableDomain { Script = 0, Registry, Const };
 
 class Table final
 {
 public:
     Table(Table&& rhs);
     ~Table();
+
+    static Table get(const Context& context, const String& path, TableDomain domain = TableDomain::Script);
 
     static Table create(const Context& context, const String& path, TableDomain domain = TableDomain::Script);
 
@@ -21,9 +23,11 @@ public:
     //static Table create(const Table& context, const String& name, TableDomain domain = TableDomain::Script);
     //static bool create(const Context& context, const String& name, TableDomain domain = TableDomain::Script);
 
+    bool isValid() const;
+
     Table createTable(const String& path) const;
 
-    void put() const;
+    bool contains(const String& name) const;
 
 private:
     struct Impl;

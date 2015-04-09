@@ -94,6 +94,10 @@ int main(int /*argc*/, char * /*argv*/[])
     context.initialize();
     context.setInterface<TestInterface>();
 
+    auto t = sqrew::Table::create(context, "com.package.name");
+    auto t1 = sqrew::Table::get(context, "com.package");
+    bool testTable = t.contains("name");
+
     sqrew::Class<ExposeTest>::expose(context, "ExposeTest")
         .setConstructor<int>()
         .setMethod("getF", &ExposeTest::getF)

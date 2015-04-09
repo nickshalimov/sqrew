@@ -33,6 +33,22 @@ private:
     std::unique_ptr<Interface> interface_;
 };
 
+class StackLock final
+{
+public:
+    explicit StackLock(const Context& ctx);
+    ~StackLock();
+
+private:
+    const Context& context_;
+    Integer top_;
+
+    StackLock(const StackLock&) = delete;
+    StackLock(StackLock&&) = delete;
+    StackLock& operator=(const StackLock&) = delete;
+    StackLock& operator=(StackLock&&) = delete;
+};
+
 } // namespace sqrew
 
 #endif // SQREW_CONTEXT_H

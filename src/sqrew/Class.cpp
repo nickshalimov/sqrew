@@ -81,6 +81,8 @@ void ClassImpl::initialize(const String& name, size_t typeTag)
 {
     auto v = context_.getHandle();
 
+
+
     //auto rootTable = Table::getRoot(context_);
     //rootTable.createClass(name);
 
@@ -93,6 +95,8 @@ void ClassImpl::initialize(const String& name, size_t typeTag)
     sq_newslot(v, -3, SQFalse);
 
     sq_pop(v, 1);
+
+    //auto classRegistry = Table::
 
     /*
     auto classesTable = Table::create(context_, _SC("__sqrew_classes"), TableDomain::Registry);

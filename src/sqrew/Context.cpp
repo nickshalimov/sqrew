@@ -34,24 +34,6 @@ struct Context::Detail
     static Context* getContext(HSQUIRRELVM vm);
 };
 
-namespace {
-
-class StackGuard
-{
-public:
-    explicit StackGuard(HSQUIRRELVM vm)
-        : vm_(vm), top_(sq_gettop(vm))
-    {}
-
-    ~StackGuard() { sq_settop(vm_, top_); }
-
-private:
-    HSQUIRRELVM vm_;
-    SQInteger top_;
-};
-
-}
-
 Context::Context()
     : Context(1024)
 {
@@ -96,7 +78,8 @@ bool Context::executeBuffer(const String& buffer) const
 
 bool Context::executeBuffer(const String& buffer, const String& source) const
 {
-    StackGuard guard(vm_); (void)guard;
+    StackLock lock(*this);
+
     sq_pushroottable(vm_);
 
     if (SQ_FAILED( sq_compilebuffer(vm_, buffer.c_str(), buffer.size(), source.c_str(), SQTrue) ))
@@ -172,6 +155,16 @@ void Context::Detail::handleCompilerError(HSQUIRRELVM vm,
 Context* Context::Detail::getContext(HSQUIRRELVM vm)
 {
     return static_cast<Context*>(sq_getforeignptr(vm));
+}
+
+StackLock::StackLock(const Context& ctx)
+    : context_(ctx)
+    , top_(sq_gettop(ctx.getHandle()))
+{}
+
+StackLock::~StackLock()
+{
+    sq_settop(context_.getHandle(), top_);
 }
 
 } // namespace sqrew
